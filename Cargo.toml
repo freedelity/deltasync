@@ -1,0 +1,29 @@
+[package]
+name = "deltasync"
+version = "1.0.0"
+edition = "2021"
+authors = ["Nicolas Dusart <nicolas@freedelity.be>", "Freedelity"]
+license = "MIT"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.4", default-features = false, features = ["derive", "std", "help", "usage"] }
+daemonize = "0.5"
+futures = { version = "0.3", default-features = false }
+futures-core = { version = "0.3", default-features = false }
+hex = { version = "0.4", default-features = false, features = ["alloc"] }
+md-5 = { version = "0.10", default-features = false }
+num = { version = "0.4", default-features = false }
+path-clean = "1.0"
+rand = "0.8"
+rpassword = "7.3"
+ssh2 = "0.9"
+tokio = { version= "1.0", default-features = false, features = ["fs", "io-util", "macros", "net", "sync", "rt"] }
+tokio-stream = { version = "0.1", default-features = false, features = ["net", "time"] }
+users = { version = "0.11", default-features = false }
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

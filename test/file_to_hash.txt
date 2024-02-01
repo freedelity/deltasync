@@ -1,0 +1,4 @@
+This text file is used
+to test the `hash_file` function.
+
+
