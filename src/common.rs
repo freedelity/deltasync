@@ -10,7 +10,6 @@ pub enum StatusCode {
     FileSizeDiffers = 2,
     PermissionDenied = 3,
     ClientAlreadyConnected = 4,
-    Unexpected = 5,
 }
 
 pub async fn write_string<T: AsyncWriteExt + std::marker::Unpin, S: Into<String>>(
@@ -45,6 +44,7 @@ pub async fn check_status<T: AsyncReadExt + std::marker::Unpin>(
 ) -> Result<(), anyhow::Error> {
     let status: StatusCode = unsafe { std::mem::transmute(read.read_u8().await?) };
 
+    #[allow(unreachable_patterns)]
     match status {
         StatusCode::Ack => Ok(()),
         StatusCode::InvalidSecret => Err(anyhow!("Invalid Secret")),

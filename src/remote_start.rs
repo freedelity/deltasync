@@ -38,7 +38,7 @@ pub fn remote_start_server(options: RemoteStartOptions) -> Result<String, anyhow
 
     if let Some(identity_file) = options.identity_file {
         let identity_file = std::path::Path::new(&identity_file);
-        let _ = session.userauth_pubkey_file(&options.username, None, &identity_file, None);
+        let _ = session.userauth_pubkey_file(&options.username, None, identity_file, None);
     }
 
     if !session.authenticated() {
