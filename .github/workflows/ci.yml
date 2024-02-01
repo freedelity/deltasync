@@ -1,0 +1,147 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+      - ci
+
+env:
+  RUSTFLAGS: -Dwarnings
+  CARGO: cargo
+  TARGET_FLAGS:
+  FEATURES_FLAGS:
+  TARGET_DIR: ./target
+  CROSS_VERSION: v0.2.5
+  CLIPPY_RUST_VERSION: 1.75
+  RUST_BACKTRACE: 1
+
+jobs:
+  test:
+    name: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - build: minimal
+          os: ubuntu-latest
+          rust: 1.70.0
+        - build: stable
+          os: ubuntu-latest
+          rust: stable
+        - build: beta
+          os: ubuntu-latest
+          rust: beta
+        - build: nightly
+          os: ubuntu-latest
+          rust: nightly
+        - build: stable-musl
+          os: ubuntu-latest
+          rust: stable
+          target: x86_64-unknown-linux-musl
+          features: vendored-openssl
+        - build: stable-x86
+          os: ubuntu-latest
+          rust: stable
+          target: i686-unknown-linux-gnu
+          features: vendored-openssl
+        - build: stable-aarch64
+          os: ubuntu-latest
+          rust: stable
+          target: aarch64-unknown-linux-gnu
+          features: vendored-openssl
+        - build: stable-arm-gnueabihf
+          os: ubuntu-latest
+          rust: stable
+          target: armv7-unknown-linux-gnueabihf
+          features: vendored-openssl
+        - build: stable-arm-musleabihf
+          os: ubuntu-latest
+          rust: stable
+          target: armv7-unknown-linux-musleabihf
+          features: vendored-openssl
+        - build: stable-arm-musleabi
+          os: ubuntu-latest
+          rust: stable
+          target: armv7-unknown-linux-musleabi
+          features: vendored-openssl
+        - build: stable-powerpc64
+          os: ubuntu-latest
+          rust: stable
+          target: powerpc64-unknown-linux-gnu
+          features: vendored-openssl
+        - build: stable-s390x
+          os: ubuntu-latest
+          rust: stable
+          target: s390x-unknown-linux-gnu
+          features: vendored-openssl
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: ${{ matrix.rust }}
+
+    - name: Use Cross
+      if: matrix.os == 'ubuntu-latest' && matrix.target != ''
+      run: |
+        # In the past, new releases of 'cross' have broken CI. So for now, we
+        # pin it. We also use their pre-compiled binary releases because cross
+        # has over 100 dependencies and takes a bit to compile.
+        dir="$RUNNER_TEMP/cross-download"
+        mkdir "$dir"
+        echo "$dir" >> $GITHUB_PATH
+        cd "$dir"
+        curl -LO "https://github.com/cross-rs/cross/releases/download/$CROSS_VERSION/cross-x86_64-unknown-linux-musl.tar.gz"
+        tar xf cross-x86_64-unknown-linux-musl.tar.gz
+        echo "CARGO=cross" >> $GITHUB_ENV
+        echo "TARGET_FLAGS=--target ${{ matrix.target }}" >> $GITHUB_ENV
+        echo "TARGET_DIR=./target/${{ matrix.target }}" >> $GITHUB_ENV
+
+    - name: Enable features
+      if: matrix.features != ''
+      run: echo "FEATURES_FLAGS=--features ${{ matrix.features }}" >> $GITHUB_ENV
+
+    - name: Show command used for Cargo
+      run: |
+        echo "cargo command is: ${{ env.CARGO }}"
+        echo "target flag is: ${{ env.TARGET_FLAGS }}"
+        echo "target dir is: ${{ env.TARGET_DIR }}"
+        echo "features flag is: ${{ env.FEATURES_FLAGS }}"
+
+    - name: Build deltasync
+      run: ${{ env.CARGO }} build --verbose ${{ env.TARGET_FLAGS }} ${{ env.FEATURES_FLAGS }}
+
+    - name: Run tests
+      if: matrix.target == ''
+      run: ${{ env.CARGO }} test --verbose ${{ env.TARGET_FLAGS }} ${{ env.FEATURES_FLAGS }}
+
+  rustfmt:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    - name: Install Rust
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: stable
+        components: rustfmt
+    - name: Check formatting
+      run: cargo fmt --all --check
+
+  clippy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust ${{ env.CLIPPY_RUST_VERSION }}
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.CLIPPY_RUST_VERSION }}
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      # Run clippy
+      - name: "clippy"
+        run: cargo clippy --all
