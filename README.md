@@ -50,8 +50,11 @@ Use the `--help` flag to get a full list of the available options.
 
 ## Installation
 
-Right now, you can only install this by building it from source.
-A prebuilt binary will be available from the releases page soon.
+### Prebuilt binaries
+
+Prebuilt binaries are available for a few architectures from the [releases](https://github.com/freedelity/deltasync/releases) page.
+
+For architectures not available, you'll have to build this project from source.
 
 ### Build from source
 
