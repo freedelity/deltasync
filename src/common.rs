@@ -1,9 +1,10 @@
 use crate::sync::Loan;
 use anyhow::{anyhow, bail};
+use int_enum::IntEnum;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[repr(u8)]
-#[derive(Debug)]
+#[derive(Debug, IntEnum)]
 pub enum StatusCode {
     Ack = 0,
     InvalidSecret = 1,
@@ -35,23 +36,22 @@ pub async fn write_status<T: AsyncWriteExt + std::marker::Unpin>(
     write: &mut T,
     status: StatusCode,
 ) -> Result<(), anyhow::Error> {
-    write.write_u8(status as u8).await?;
+    write.write_u8(status.into()).await?;
     Ok(())
 }
 
 pub async fn check_status<T: AsyncReadExt + std::marker::Unpin>(
     read: &mut T,
 ) -> Result<(), anyhow::Error> {
-    let status: StatusCode = unsafe { std::mem::transmute(read.read_u8().await?) };
+    let status = StatusCode::try_from(read.read_u8().await?)
+        .map_err(|_| anyhow::anyhow!("Unknown status code"))?;
 
-    #[allow(unreachable_patterns)]
     match status {
         StatusCode::Ack => Ok(()),
         StatusCode::InvalidSecret => Err(anyhow!("Invalid Secret")),
         StatusCode::FileSizeDiffers => Err(anyhow!("File size differs")),
         StatusCode::PermissionDenied => Err(anyhow!("Permission denied")),
         StatusCode::ClientAlreadyConnected => Err(anyhow!("A client is already connected")),
-        _ => Err(anyhow!("Unexpected error")),
     }
 }
 
