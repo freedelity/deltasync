@@ -147,7 +147,8 @@ mod tests {
     async fn hashes() {
         use super::*;
 
-        let mut hasher = hash_file("test/file_to_hash.txt", 10, 2).unwrap();
+        let mut hasher =
+            hash_file("test/file_to_hash.txt", 10, 2, crate::HashAlgorithm::MD5).unwrap();
 
         let assert_hash = |file_block_data: FileBlockData, expected_hash| {
             assert_eq!(file_block_data.hash, expected_hash);
@@ -196,7 +197,8 @@ mod tests {
     async fn dropped() {
         use super::*;
 
-        let mut hasher = hash_file("test/file_to_hash.txt", 10, 2).unwrap();
+        let mut hasher =
+            hash_file("test/file_to_hash.txt", 10, 2, crate::HashAlgorithm::CRC32).unwrap();
 
         let _ = hasher.recv().await.unwrap();
         std::thread::sleep(std::time::Duration::from_millis(100));
