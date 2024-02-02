@@ -1,5 +1,6 @@
 use crate::hash_file::hash_file;
 use crate::sync::Loan;
+use crate::HashAlgorithm;
 use crate::{check_status, write_string, ResumableReadString, ResumableWriteFileBlock};
 use anyhow::anyhow;
 use futures::future::OptionFuture;
@@ -19,6 +20,7 @@ pub async fn new_process(
     force_truncate: bool,
     workers: u8,
     block_size: usize,
+    hash_algorithm: HashAlgorithm,
 ) -> Result<(), anyhow::Error> {
     let mut stream = TcpStream::connect(address).await?;
 
@@ -40,15 +42,16 @@ pub async fn new_process(
     let src_size = src.seek(SeekFrom::End(0))?;
     src.rewind()?;
 
-    // send block size, file size and force flag
+    // send block size, file size, force flag and hash algorithm
     stream.write_u64(block_size.try_into()?).await?;
     stream.write_u64(src_size).await?;
     stream.write_u8(if force_truncate { 1 } else { 0 }).await?;
+    stream.write_u8(hash_algorithm.into()).await?;
 
     check_status(&mut stream).await?;
 
     // Start the file hashing
-    let mut hasher = hash_file(&src_path, block_size, workers)?;
+    let mut hasher = hash_file(&src_path, block_size, workers, hash_algorithm)?;
     let mut processing_hash = None;
     let mut hash_comparison_over = false;
 
