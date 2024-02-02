@@ -37,8 +37,12 @@ pub async fn process_new_client(
     let force_truncate = !matches!(client.read_u8().await?, 0);
 
     // get hash algorithm
-    let hash_algorithm = HashAlgorithm::try_from(client.read_u8().await?)
-        .map_err(|_| anyhow::anyhow!("Unknown hash algorithm"))?;
+    let hash_algorithm = match HashAlgorithm::try_from(client.read_u8().await?) {
+        Ok(algo) => algo,
+        Err(_) => {
+            return Ok(StatusCode::UnknownHashAlgorithm);
+        }
+    };
 
     match std::fs::OpenOptions::new().append(true).open(&dest_path) {
         Ok(mut dest) => {

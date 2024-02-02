@@ -11,6 +11,7 @@ pub enum StatusCode {
     FileSizeDiffers = 2,
     PermissionDenied = 3,
     ClientAlreadyConnected = 4,
+    UnknownHashAlgorithm = 5,
 }
 
 pub async fn write_string<T: AsyncWriteExt + std::marker::Unpin, S: Into<String>>(
@@ -52,6 +53,9 @@ pub async fn check_status<T: AsyncReadExt + std::marker::Unpin>(
         StatusCode::FileSizeDiffers => Err(anyhow!("File size differs")),
         StatusCode::PermissionDenied => Err(anyhow!("Permission denied")),
         StatusCode::ClientAlreadyConnected => Err(anyhow!("A client is already connected")),
+        StatusCode::UnknownHashAlgorithm => {
+            Err(anyhow!("Hash algorithm is not supported on remote end"))
+        }
     }
 }
 
