@@ -64,6 +64,12 @@ You can simply build this with the **Rust** toolchain (using **cargo** package m
 cargo build --release
 ```
 
+This build will be linked against the OpenSSL library of your system. If this makes an issue to deploy it on a machine with an incompatible version of OpenSSL, you can statically link OpenSSL in your binary by enabling the `vendored-openssl` feature (this will add ~4MB to the final binary):
+
+```sh
+cargo build --release --feature vendored-openssl
+```
+
 ## License
 
 This project is licensed under the [MIT license].

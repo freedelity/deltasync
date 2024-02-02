@@ -188,9 +188,8 @@ async fn main() -> Result<(), anyhow::Error> {
             let username = users::get_current_username();
             let username = args
                 .remote_start_user
-                .as_ref()
-                .map(|s| s.as_str())
-                .or_else(|| username.as_ref().map(|u| u.to_str()).flatten())
+                .as_deref()
+                .or_else(|| username.as_ref().and_then(|u| u.to_str()))
                 .ok_or(anyhow!("Failed to get current username"))?;
 
             remote_start_server(RemoteStartOptions {
