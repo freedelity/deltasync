@@ -226,16 +226,16 @@ async fn main() -> Result<(), anyhow::Error> {
 
         let address = ip + ":" + &args.port.to_string();
 
-        if let Err(e) = client::new_process(
+        if let Err(e) = client::new_process(client::ClientProcessOptions {
             address,
             secret,
-            src,
+            src_path: src,
             dest,
-            args.force_truncate,
-            args.workers,
-            args.block_size,
-            args.hash,
-        )
+            force_truncate: args.force_truncate,
+            workers: args.workers,
+            block_size: args.block_size,
+            hash_algorithm: args.hash,
+        })
         .await
         {
             eprintln!("Error: {}", e);
