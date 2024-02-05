@@ -1,4 +1,5 @@
 use crate::hash_file::hash_file;
+use crate::HashAlgorithm;
 use crate::{
     read_string, write_status, ResumableAsyncWriteAll, ResumableReadFileBlock,
     ResumableWriteString, StatusCode,
@@ -35,6 +36,14 @@ pub async fn process_new_client(
     let filesize = client.read_u64().await?;
     let force_truncate = !matches!(client.read_u8().await?, 0);
 
+    // get hash algorithm
+    let hash_algorithm = match HashAlgorithm::try_from(client.read_u8().await?) {
+        Ok(algo) => algo,
+        Err(_) => {
+            return Ok(StatusCode::UnknownHashAlgorithm);
+        }
+    };
+
     match std::fs::OpenOptions::new().append(true).open(&dest_path) {
         Ok(mut dest) => {
             let actual_size = dest.seek(SeekFrom::End(0))?;
@@ -65,7 +74,7 @@ pub async fn process_new_client(
     write_status(client, StatusCode::Ack).await?;
 
     // Start the file hashing
-    let mut hasher = hash_file(&dest_path, block_size, workers)?;
+    let mut hasher = hash_file(&dest_path, block_size, workers, hash_algorithm)?;
 
     // Event loop
     let mut resumable_read_file_block = ResumableReadFileBlock::new(block_size, filesize as usize);

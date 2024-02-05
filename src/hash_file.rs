@@ -1,5 +1,6 @@
 use crate::sync::{loan, Loan};
 use crate::sync::{ordered_channel, OrderedReceiver};
+use crate::HashAlgorithm;
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -15,10 +16,20 @@ pub struct HashStream {
     join_handles: Vec<std::thread::JoinHandle<()>>,
 }
 
+fn hash_data(data: &[u8], algorithm: HashAlgorithm) -> String {
+    use md5::{Digest, Md5};
+
+    match algorithm {
+        HashAlgorithm::CRC32 => hex::encode(crc32c::crc32c(data).to_le_bytes()),
+        HashAlgorithm::MD5 => hex::encode(Md5::digest(data)),
+    }
+}
+
 pub fn hash_file(
     path: impl AsRef<Path>,
     block_size: usize,
     workers: u8,
+    algorithm: HashAlgorithm,
 ) -> Result<HashStream, anyhow::Error> {
     let path = {
         let mut p = PathBuf::new();
@@ -55,7 +66,6 @@ pub fn hash_file(
             let mut buffer = vec![0; block_size];
 
             while offset < file_size {
-                use md5::{Digest, Md5};
                 use std::io::Read;
 
                 let hash = {
@@ -75,10 +85,7 @@ pub fn hash_file(
                         break;
                     }
 
-                    {
-                        let hash = Md5::digest(buf);
-                        hex::encode(hash)
-                    }
+                    hash_data(buf, algorithm)
                 };
 
                 let (loaned, reclaimer) = loan(buffer);
@@ -140,7 +147,8 @@ mod tests {
     async fn hashes() {
         use super::*;
 
-        let mut hasher = hash_file("test/file_to_hash.txt", 10, 2).unwrap();
+        let mut hasher =
+            hash_file("test/file_to_hash.txt", 10, 2, crate::HashAlgorithm::MD5).unwrap();
 
         let assert_hash = |file_block_data: FileBlockData, expected_hash| {
             assert_eq!(file_block_data.hash, expected_hash);
@@ -189,7 +197,8 @@ mod tests {
     async fn dropped() {
         use super::*;
 
-        let mut hasher = hash_file("test/file_to_hash.txt", 10, 2).unwrap();
+        let mut hasher =
+            hash_file("test/file_to_hash.txt", 10, 2, crate::HashAlgorithm::CRC32).unwrap();
 
         let _ = hasher.recv().await.unwrap();
         std::thread::sleep(std::time::Duration::from_millis(100));

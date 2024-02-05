@@ -10,11 +10,13 @@ vendored-openssl = ["ssh2/vendored-openssl"]
 
 [dependencies]
 anyhow = "1.0"
-clap = { version = "4.4", default-features = false, features = ["derive", "std", "help", "usage"] }
+clap = { version = "4.4", default-features = false, features = ["derive", "std", "help", "usage", "error-context"] }
+crc32c = "0.6"
 daemonize = "0.5"
 futures = { version = "0.3", default-features = false }
 futures-core = { version = "0.3", default-features = false }
 hex = { version = "0.4", default-features = false, features = ["alloc"] }
+int-enum = "1.0"
 md-5 = { version = "0.10", default-features = false }
 num = { version = "0.4", default-features = false }
 path-clean = "1.0"

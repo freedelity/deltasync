@@ -1,6 +1,7 @@
 use anyhow::{anyhow, bail};
-use clap::Parser;
+use clap::{Parser, ValueEnum};
 use daemonize::Daemonize;
+use int_enum::IntEnum;
 use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -22,6 +23,14 @@ use common::{
 };
 
 use remote_start::{remote_start_server, RemoteStartOptions};
+
+#[repr(u8)]
+#[derive(Copy, Clone, Debug, Default, IntEnum, ValueEnum)]
+pub enum HashAlgorithm {
+    #[default]
+    CRC32 = 1,
+    MD5 = 2,
+}
 
 #[derive(Parser, Debug, Clone)]
 #[command(author, version, about, verbatim_doc_comment)]
@@ -80,6 +89,10 @@ struct Args {
     /// Size of blocks (in bytes)
     #[arg(short = 'b', default_value_t = 1048576)]
     block_size: usize,
+
+    /// Hash algorithm to use
+    #[arg(long, default_value_t, value_enum)]
+    hash: HashAlgorithm,
 
     /// Ephemeral mode: the executable is removed when the process is started. This is used in remote end when --remote-start flag is set to avoid polluting the temporary directory.
     #[arg(short = 'e', long)]
@@ -213,15 +226,16 @@ async fn main() -> Result<(), anyhow::Error> {
 
         let address = ip + ":" + &args.port.to_string();
 
-        if let Err(e) = client::new_process(
+        if let Err(e) = client::new_process(client::ClientProcessOptions {
             address,
             secret,
-            src,
+            src_path: src,
             dest,
-            args.force_truncate,
-            args.workers,
-            args.block_size,
-        )
+            force_truncate: args.force_truncate,
+            workers: args.workers,
+            block_size: args.block_size,
+            hash_algorithm: args.hash,
+        })
         .await
         {
             eprintln!("Error: {}", e);
