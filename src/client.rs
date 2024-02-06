@@ -1,7 +1,9 @@
 use crate::hash_file::hash_file;
 use crate::sync::Loan;
 use crate::HashAlgorithm;
-use crate::{check_status, write_string, ResumableReadString, ResumableWriteFileBlock};
+use crate::{
+    check_status, write_string, ResumableReadString, ResumableWriteFileBlock, PROTOCOL_VERSION,
+};
 use anyhow::anyhow;
 use futures::future::OptionFuture;
 use std::collections::VecDeque;
@@ -29,6 +31,10 @@ pub async fn new_process(options: ClientProcessOptions) -> Result<(), anyhow::Er
     // first send secret
     stream.write_u8(options.secret.len().try_into()?).await?;
     stream.write_all(options.secret.as_bytes()).await?;
+    check_status(&mut stream).await?;
+
+    // send protocol version
+    stream.write_u8(PROTOCOL_VERSION).await?;
     check_status(&mut stream).await?;
 
     // send dest path

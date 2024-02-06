@@ -19,7 +19,7 @@ mod utils;
 use common::{
     check_status, read_string, write_status, write_string, ResumableAsyncWriteAll,
     ResumableReadFileBlock, ResumableReadString, ResumableWriteFileBlock, ResumableWriteString,
-    StatusCode,
+    StatusCode, PROTOCOL_VERSION,
 };
 
 use remote_start::{remote_start_server, RemoteStartOptions};
