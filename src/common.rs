@@ -3,6 +3,8 @@ use anyhow::{anyhow, bail};
 use int_enum::IntEnum;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+pub const PROTOCOL_VERSION: u8 = 1;
+
 #[repr(u8)]
 #[derive(Debug, IntEnum)]
 pub enum StatusCode {
@@ -12,6 +14,7 @@ pub enum StatusCode {
     PermissionDenied = 3,
     ClientAlreadyConnected = 4,
     UnknownHashAlgorithm = 5,
+    UnsupportedProtocolVersion = 6,
 }
 
 pub async fn write_string<T: AsyncWriteExt + std::marker::Unpin, S: Into<String>>(
@@ -56,6 +59,7 @@ pub async fn check_status<T: AsyncReadExt + std::marker::Unpin>(
         StatusCode::UnknownHashAlgorithm => {
             Err(anyhow!("Hash algorithm is not supported on remote end"))
         }
+        StatusCode::UnsupportedProtocolVersion => Err(anyhow!("Protocol version mismatch")),
     }
 }
 

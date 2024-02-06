@@ -2,7 +2,7 @@ use crate::hash_file::hash_file;
 use crate::HashAlgorithm;
 use crate::{
     read_string, write_status, ResumableAsyncWriteAll, ResumableReadFileBlock,
-    ResumableWriteString, StatusCode,
+    ResumableWriteString, StatusCode, PROTOCOL_VERSION,
 };
 use futures::future::OptionFuture;
 use std::fs::File;
@@ -25,7 +25,13 @@ pub async fn process_new_client(
     if client_secret != secret.as_bytes() {
         return Ok(StatusCode::InvalidSecret);
     }
+    write_status(client, StatusCode::Ack).await?;
 
+    // check client protocol version
+    let client_protocol_version = client.read_u8().await?;
+    if client_protocol_version != PROTOCOL_VERSION {
+        return Ok(StatusCode::UnsupportedProtocolVersion);
+    }
     write_status(client, StatusCode::Ack).await?;
 
     // get dest path
