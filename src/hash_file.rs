@@ -69,8 +69,6 @@ pub fn hash_file(
                 use std::io::Read;
 
                 let hash = {
-                    let buf = &mut buffer;
-
                     let current_block_size = {
                         let rem = file_size - offset;
                         if rem < block_size {
@@ -79,7 +77,8 @@ pub fn hash_file(
                             block_size
                         }
                     };
-                    let buf = &mut buf[0..current_block_size];
+                    buffer.resize(current_block_size, 0);
+                    let buf = &mut buffer;
 
                     if file.read_exact(buf).is_err() {
                         break;
