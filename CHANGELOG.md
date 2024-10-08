@@ -1,4 +1,4 @@
-# 1.1.1 (2024-10-08
+# 1.1.1 (2024-10-08)
 
 - Fix last bloc not properly truncated
 
