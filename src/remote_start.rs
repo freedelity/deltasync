@@ -5,10 +5,11 @@ use std::net::TcpStream;
 
 pub struct RemoteStartOptions {
     pub address: String,
-    pub port: u16,
+    pub ssh_port: u16,
     pub username: String,
     pub identity_file: Option<String>,
     pub workers: u8,
+    pub server_port: u16,
 }
 
 fn try_ssh_auth_with_agent(session: &Session, username: &str) -> Result<(), anyhow::Error> {
@@ -26,7 +27,7 @@ fn try_ssh_auth_with_agent(session: &Session, username: &str) -> Result<(), anyh
 
 /// Upload deltasync program to remote and and start it in server mode with a random secret.
 pub fn remote_start_server(options: RemoteStartOptions) -> Result<String, anyhow::Error> {
-    let address = options.address + ":" + &options.port.to_string();
+    let address = options.address + ":" + &options.ssh_port.to_string();
 
     let tcp = TcpStream::connect(&address)?;
 
@@ -104,7 +105,9 @@ pub fn remote_start_server(options: RemoteStartOptions) -> Result<String, anyhow
     {
         let mut channel = session.channel_session()?;
         let command = remote_filename.to_string()
-            + " --server -d -e -o --secret \""
+            + " --server -d -e -o --port \""
+            + &options.server_port.to_string()
+            + "\" --secret \""
             + &secret
             + "\" -w "
             + &options.workers.to_string();

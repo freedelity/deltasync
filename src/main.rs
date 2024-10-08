@@ -207,10 +207,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
             remote_start_server(RemoteStartOptions {
                 address: ip.clone(),
-                port: args.remote_start_port,
+                ssh_port: args.remote_start_port,
                 username: username.to_string(),
                 identity_file: args.identity_file,
                 workers: args.remote_start_workers.unwrap_or(args.workers),
+                server_port: args.port,
             })?
         } else {
             secret
