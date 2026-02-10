@@ -1,6 +1,6 @@
-use crate::sync::{loan, Loan};
-use crate::sync::{ordered_channel, OrderedReceiver};
 use crate::HashAlgorithm;
+use crate::sync::{Loan, loan};
+use crate::sync::{OrderedReceiver, ordered_channel};
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
 use std::path::{Path, PathBuf};
@@ -85,11 +85,7 @@ pub fn hash_file(
                 let hash = {
                     let current_block_size = {
                         let rem = file_size - offset;
-                        if rem < block_size {
-                            rem
-                        } else {
-                            block_size
-                        }
+                        if rem < block_size { rem } else { block_size }
                     };
                     buffer.resize(current_block_size, 0);
                     let buf = &mut buffer;

@@ -2,11 +2,11 @@ use anyhow::{anyhow, bail};
 use clap::{Parser, ValueEnum};
 use daemonize::Daemonize;
 use int_enum::IntEnum;
-use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 use tokio::net::TcpListener;
-use tokio_stream::wrappers::TcpListenerStream;
 use tokio_stream::StreamExt;
+use tokio_stream::wrappers::TcpListenerStream;
 
 mod client;
 mod common;
@@ -17,12 +17,12 @@ mod sync;
 mod utils;
 
 use common::{
-    check_status, read_string, write_status, write_string, ResumableAsyncWriteAll,
-    ResumableReadFileBlock, ResumableReadString, ResumableWriteFileBlock, ResumableWriteString,
-    StatusCode, PROTOCOL_VERSION,
+    PROTOCOL_VERSION, ResumableAsyncWriteAll, ResumableReadFileBlock, ResumableReadString,
+    ResumableWriteFileBlock, ResumableWriteString, StatusCode, check_status, read_string,
+    write_status, write_string,
 };
 
-use remote_start::{remote_start_server, RemoteStartOptions};
+use remote_start::{RemoteStartOptions, remote_start_server};
 
 #[repr(u8)]
 #[derive(Copy, Clone, Debug, Default, IntEnum, ValueEnum)]

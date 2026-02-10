@@ -633,10 +633,12 @@ mod tests {
         let mut cursor = Cursor::new(vec![0u8, 0, 0]);
         let result = reader.read_on(&mut cursor).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Connection closed"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Connection closed")
+        );
     }
 
     #[tokio::test]
@@ -649,10 +651,12 @@ mod tests {
         let mut cursor = Cursor::new(data);
         let result = reader.read_on(&mut cursor).await;
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("Connection closed"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("Connection closed")
+        );
     }
 
     // ── Cancel-safety: read_on/write_to survive tokio::select! ──────

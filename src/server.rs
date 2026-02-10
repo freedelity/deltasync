@@ -1,8 +1,8 @@
-use crate::hash_file::hash_file;
 use crate::HashAlgorithm;
+use crate::hash_file::hash_file;
 use crate::{
-    read_string, write_status, ResumableAsyncWriteAll, ResumableReadFileBlock,
-    ResumableWriteString, StatusCode, PROTOCOL_VERSION,
+    PROTOCOL_VERSION, ResumableAsyncWriteAll, ResumableReadFileBlock, ResumableWriteString,
+    StatusCode, read_string, write_status,
 };
 use futures::future::OptionFuture;
 use std::fs::File;

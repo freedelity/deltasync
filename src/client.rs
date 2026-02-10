@@ -1,8 +1,8 @@
+use crate::HashAlgorithm;
 use crate::hash_file::hash_file;
 use crate::sync::Loan;
-use crate::HashAlgorithm;
 use crate::{
-    check_status, write_string, ResumableReadString, ResumableWriteFileBlock, PROTOCOL_VERSION,
+    PROTOCOL_VERSION, ResumableReadString, ResumableWriteFileBlock, check_status, write_string,
 };
 use anyhow::anyhow;
 use futures::future::OptionFuture;
