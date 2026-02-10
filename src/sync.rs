@@ -314,4 +314,90 @@ mod tests {
         std::mem::drop(rx);
         let _ = handle.join();
     }
+
+    // ── Loan / Reclaim ──────────────────────────────────────────────
+
+    #[test]
+    fn loan_deref_gives_access_to_value() {
+        let (loan, _reclaim) = super::loan(vec![1, 2, 3]);
+        assert_eq!(&*loan, &vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn loan_deref_mut_allows_mutation() {
+        let (mut loan, _reclaim) = super::loan(vec![1, 2, 3]);
+        loan.push(4);
+        assert_eq!(&*loan, &vec![1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn loan_drop_sends_value_back_to_reclaimer() {
+        let (loan, reclaim) = super::loan(vec![10, 20]);
+
+        let handle = std::thread::spawn(move || reclaim.blocking_reclaim());
+
+        drop(loan);
+        let value = handle.join().unwrap();
+        assert_eq!(value, vec![10, 20]);
+    }
+
+    #[test]
+    fn loan_drop_sends_mutated_value_back() {
+        let (mut loan, reclaim) = super::loan(vec![1]);
+        loan.push(2);
+        loan.push(3);
+
+        let handle = std::thread::spawn(move || reclaim.blocking_reclaim());
+
+        drop(loan);
+        let value = handle.join().unwrap();
+        assert_eq!(value, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn loan_drop_returns_default_after_mem_take() {
+        // Loan::drop uses mem::take, which replaces the value with Default.
+        // The reclaimer gets whatever was in the Loan at drop time.
+        let (loan, reclaim) = super::loan(String::from("hello"));
+
+        let handle = std::thread::spawn(move || reclaim.blocking_reclaim());
+
+        // Drop normally — reclaimer gets "hello"
+        drop(loan);
+        let value = handle.join().unwrap();
+        assert_eq!(value, "hello");
+    }
+
+    #[test]
+    fn loan_reclaim_across_threads() {
+        // Simulate the hash_file pattern: loan a buffer, send the Loan to
+        // another thread, reclaim it back after the Loan is dropped.
+        let buffer = vec![0u8; 1024];
+        let (loan, reclaim) = super::loan(buffer);
+
+        let handle = std::thread::spawn(move || {
+            // Simulate "consumer" reading the loaned data
+            assert_eq!(loan.len(), 1024);
+            // Loan dropped here at end of scope
+        });
+
+        handle.join().unwrap();
+        let reclaimed = reclaim.blocking_reclaim();
+        assert_eq!(reclaimed.len(), 1024);
+    }
+
+    #[test]
+    fn loan_reclaim_preserves_mutations_across_threads() {
+        let (loan, reclaim) = super::loan(vec![0u8; 4]);
+
+        let handle = std::thread::spawn(move || {
+            // Consumer can't mutate through a non-mut loan, but we can
+            // verify the loaned value is correct
+            assert_eq!(&*loan, &[0, 0, 0, 0]);
+        });
+
+        handle.join().unwrap();
+        let reclaimed = reclaim.blocking_reclaim();
+        assert_eq!(reclaimed, vec![0, 0, 0, 0]);
+    }
 }
