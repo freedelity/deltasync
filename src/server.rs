@@ -39,6 +39,9 @@ pub async fn process_new_client(
 
     // get block and file size
     let block_size = client.read_u64().await? as usize;
+    if block_size == 0 || block_size > 1024 * 1024 * 1024 {
+        return Ok(StatusCode::InvalidBlockSize);
+    }
     let filesize = client.read_u64().await?;
     let force_truncate = !matches!(client.read_u8().await?, 0);
 

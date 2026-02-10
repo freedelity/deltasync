@@ -15,6 +15,7 @@ pub enum StatusCode {
     ClientAlreadyConnected = 4,
     UnknownHashAlgorithm = 5,
     UnsupportedProtocolVersion = 6,
+    InvalidBlockSize = 7,
 }
 
 pub async fn write_string<T: AsyncWriteExt + std::marker::Unpin, S: Into<String>>(
@@ -60,6 +61,7 @@ pub async fn check_status<T: AsyncReadExt + std::marker::Unpin>(
             Err(anyhow!("Hash algorithm is not supported on remote end"))
         }
         StatusCode::UnsupportedProtocolVersion => Err(anyhow!("Protocol version mismatch")),
+        StatusCode::InvalidBlockSize => Err(anyhow!("Invalid block size")),
     }
 }
 
