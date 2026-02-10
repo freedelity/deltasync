@@ -309,3 +309,522 @@ impl<'a, T: AsyncWriteExt + std::marker::Unpin> ResumableAsyncWriteAll<'a, T> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    // ── write_string / read_string ──────────────────────────────────
+
+    #[tokio::test]
+    async fn write_read_string_round_trip() {
+        let mut buf = Vec::new();
+        write_string(&mut buf, "hello").await.unwrap();
+
+        let mut cursor = Cursor::new(buf);
+        let result = read_string(&mut cursor, 256).await.unwrap();
+        assert_eq!(result, "hello");
+    }
+
+    #[tokio::test]
+    async fn write_read_string_empty() {
+        let mut buf = Vec::new();
+        write_string(&mut buf, "").await.unwrap();
+
+        let mut cursor = Cursor::new(buf);
+        let result = read_string(&mut cursor, 256).await.unwrap();
+        assert_eq!(result, "");
+    }
+
+    #[tokio::test]
+    async fn read_string_rejects_exceeding_max_len() {
+        let mut buf = Vec::new();
+        write_string(&mut buf, "toolong").await.unwrap();
+
+        let mut cursor = Cursor::new(buf);
+        let result = read_string(&mut cursor, 3).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("exceeds maximum"));
+    }
+
+    #[tokio::test]
+    async fn read_string_accepts_exactly_max_len() {
+        let mut buf = Vec::new();
+        write_string(&mut buf, "abc").await.unwrap();
+
+        let mut cursor = Cursor::new(buf);
+        let result = read_string(&mut cursor, 3).await.unwrap();
+        assert_eq!(result, "abc");
+    }
+
+    #[tokio::test]
+    async fn write_read_string_with_unicode() {
+        let mut buf = Vec::new();
+        write_string(&mut buf, "héllo 🌍").await.unwrap();
+
+        let mut cursor = Cursor::new(buf);
+        let result = read_string(&mut cursor, 256).await.unwrap();
+        assert_eq!(result, "héllo 🌍");
+    }
+
+    // ── write_status / check_status ─────────────────────────────────
+
+    #[tokio::test]
+    async fn write_check_status_ack() {
+        let mut buf = Vec::new();
+        write_status(&mut buf, StatusCode::Ack).await.unwrap();
+
+        let mut cursor = Cursor::new(buf);
+        check_status(&mut cursor).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn check_status_rejects_non_ack() {
+        let codes: [(u8, &str); 7] = [
+            (1, "Invalid Secret"),
+            (2, "File size differs"),
+            (3, "Permission denied"),
+            (4, "A client is already connected"),
+            (5, "Hash algorithm is not supported"),
+            (6, "Protocol version mismatch"),
+            (7, "Invalid block size"),
+        ];
+
+        for (code_byte, expected_msg) in codes {
+            let mut cursor = Cursor::new(vec![code_byte]);
+            let err = check_status(&mut cursor).await.unwrap_err();
+            assert!(
+                err.to_string().contains(expected_msg),
+                "Expected '{}' in error for code {}, got: {}",
+                expected_msg,
+                code_byte,
+                err
+            );
+        }
+    }
+
+    #[tokio::test]
+    async fn check_status_rejects_unknown_code() {
+        let mut cursor = Cursor::new(vec![255u8]);
+        let err = check_status(&mut cursor).await.unwrap_err();
+        assert!(err.to_string().contains("Unknown status code"));
+    }
+
+    // ── ResumableWriteString / ResumableReadString round-trip ────────
+
+    #[tokio::test]
+    async fn resumable_write_read_string_round_trip() {
+        let mut buf = Vec::new();
+        let mut writer = ResumableWriteString::new("deltasync");
+        writer.write_to(&mut buf).await.unwrap();
+
+        let mut reader = ResumableReadString::new(256);
+        let mut cursor = Cursor::new(buf);
+        let result = reader.read_on(&mut cursor).await.unwrap();
+        assert_eq!(result, "deltasync");
+    }
+
+    #[tokio::test]
+    async fn resumable_write_read_string_empty() {
+        let mut buf = Vec::new();
+        let mut writer = ResumableWriteString::new("");
+        writer.write_to(&mut buf).await.unwrap();
+
+        let mut reader = ResumableReadString::new(256);
+        let mut cursor = Cursor::new(buf);
+        let result = reader.read_on(&mut cursor).await.unwrap();
+        assert_eq!(result, "");
+    }
+
+    #[tokio::test]
+    async fn resumable_read_string_rejects_exceeding_max_len() {
+        let mut buf = Vec::new();
+        let mut writer = ResumableWriteString::new("toolong");
+        writer.write_to(&mut buf).await.unwrap();
+
+        let mut reader = ResumableReadString::new(3);
+        let mut cursor = Cursor::new(buf);
+        let result = reader.read_on(&mut cursor).await;
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("exceeds maximum"));
+    }
+
+    #[tokio::test]
+    async fn resumable_read_string_multiple_sequential_reads() {
+        let mut buf = Vec::new();
+        ResumableWriteString::new("first")
+            .write_to(&mut buf)
+            .await
+            .unwrap();
+        ResumableWriteString::new("second")
+            .write_to(&mut buf)
+            .await
+            .unwrap();
+
+        let mut reader = ResumableReadString::new(256);
+        let mut cursor = Cursor::new(buf);
+        assert_eq!(reader.read_on(&mut cursor).await.unwrap(), "first");
+        assert_eq!(reader.read_on(&mut cursor).await.unwrap(), "second");
+    }
+
+    // ── Resumable write/read are wire-compatible with simple write/read
+
+    #[tokio::test]
+    async fn resumable_write_compatible_with_simple_read() {
+        let mut buf = Vec::new();
+        let mut writer = ResumableWriteString::new("compat");
+        writer.write_to(&mut buf).await.unwrap();
+
+        let mut cursor = Cursor::new(buf);
+        let result = read_string(&mut cursor, 256).await.unwrap();
+        assert_eq!(result, "compat");
+    }
+
+    #[tokio::test]
+    async fn simple_write_compatible_with_resumable_read() {
+        let mut buf = Vec::new();
+        write_string(&mut buf, "compat").await.unwrap();
+
+        let mut reader = ResumableReadString::new(256);
+        let mut cursor = Cursor::new(buf);
+        let result = reader.read_on(&mut cursor).await.unwrap();
+        assert_eq!(result, "compat");
+    }
+
+    // ── ResumableWriteFileBlock / ResumableReadFileBlock round-trip ──
+
+    #[tokio::test]
+    async fn resumable_write_read_file_block_round_trip() {
+        let data = vec![1u8, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+        let block_size = 10;
+        let file_size = 100;
+        let offset = 20; // block at offset 20
+
+        let (loaned, reclaimer) = crate::sync::loan(data);
+
+        let mut buf = Vec::new();
+        let mut writer = ResumableWriteFileBlock::new(offset, loaned);
+        writer.write_to(&mut buf).await.unwrap();
+        drop(reclaimer);
+
+        let mut reader = ResumableReadFileBlock::new(block_size, file_size);
+        let mut read_buf = Vec::new();
+        let mut cursor = Cursor::new(buf);
+        let read_offset = reader.read_on(&mut cursor, &mut read_buf).await.unwrap();
+
+        assert_eq!(read_offset, offset);
+        assert_eq!(read_buf, vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+    }
+
+    #[tokio::test]
+    async fn resumable_write_read_file_block_last_block_smaller() {
+        let data = vec![1u8, 2, 3]; // last block, only 3 bytes
+        let block_size = 10;
+        let file_size = 93; // offset 90 + 3 = 93
+        let offset = 90;
+
+        let (loaned, reclaimer) = crate::sync::loan(data);
+
+        let mut buf = Vec::new();
+        let mut writer = ResumableWriteFileBlock::new(offset, loaned);
+        writer.write_to(&mut buf).await.unwrap();
+        drop(reclaimer);
+
+        let mut reader = ResumableReadFileBlock::new(block_size, file_size);
+        let mut read_buf = Vec::new();
+        let mut cursor = Cursor::new(buf);
+        let read_offset = reader.read_on(&mut cursor, &mut read_buf).await.unwrap();
+
+        assert_eq!(read_offset, offset);
+        assert_eq!(read_buf, vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn resumable_read_file_block_multiple_sequential() {
+        let block_size = 4;
+        let file_size = 10; // blocks: [0..4], [4..8], [8..10]
+
+        let mut wire = Vec::new();
+
+        // Write two blocks
+        let (loaned, reclaimer) = crate::sync::loan(vec![0xAA; 4]);
+        ResumableWriteFileBlock::new(0, loaned)
+            .write_to(&mut wire)
+            .await
+            .unwrap();
+        drop(reclaimer);
+
+        let (loaned, reclaimer) = crate::sync::loan(vec![0xBB; 2]);
+        ResumableWriteFileBlock::new(8, loaned)
+            .write_to(&mut wire)
+            .await
+            .unwrap();
+        drop(reclaimer);
+
+        let mut reader = ResumableReadFileBlock::new(block_size, file_size);
+        let mut cursor = Cursor::new(wire);
+
+        let mut read_buf = Vec::new();
+        let off = reader.read_on(&mut cursor, &mut read_buf).await.unwrap();
+        assert_eq!(off, 0);
+        assert_eq!(read_buf, vec![0xAA; 4]);
+
+        let off = reader.read_on(&mut cursor, &mut read_buf).await.unwrap();
+        assert_eq!(off, 8);
+        assert_eq!(read_buf, vec![0xBB; 2]);
+    }
+
+    // ── ResumableAsyncWriteAll ──────────────────────────────────────
+
+    #[tokio::test]
+    async fn resumable_async_write_all() {
+        let mut buf = Vec::new();
+        let mut writer = ResumableAsyncWriteAll::new(&mut buf);
+        writer.write_all(b"hello world").await.unwrap();
+        assert_eq!(buf, b"hello world");
+    }
+
+    #[tokio::test]
+    async fn resumable_async_write_all_empty() {
+        let mut buf = Vec::new();
+        let mut writer = ResumableAsyncWriteAll::new(&mut buf);
+        writer.write_all(b"").await.unwrap();
+        assert!(buf.is_empty());
+    }
+
+    #[tokio::test]
+    async fn resumable_async_write_all_cancel_and_resume() {
+        let data = b"abcdefghijklmnopqrstuvwxyz";
+
+        // duplex(4): writer blocks after 4 bytes with no reader
+        let (mut rx, mut tx) = tokio::io::duplex(4);
+        let mut writer = ResumableAsyncWriteAll::new(&mut tx);
+
+        tokio::select! {
+            _ = writer.write_all(data) => panic!("should not complete with 4-byte buffer and no reader"),
+            _ = tokio::time::sleep(std::time::Duration::from_millis(50)) => {}
+        }
+
+        // Spawn a reader that drains everything until EOF
+        let reader_handle = tokio::spawn(async move {
+            let mut all = Vec::new();
+            tokio::io::AsyncReadExt::read_to_end(&mut rx, &mut all)
+                .await
+                .unwrap();
+            all
+        });
+
+        // Resume from saved offset
+        writer.write_all(data).await.unwrap();
+        drop(writer);
+        drop(tx);
+
+        let received = reader_handle.await.unwrap();
+        assert_eq!(received, data);
+    }
+
+    // ── ResumableReadString connection closed ───────────────────────
+
+    #[tokio::test]
+    async fn resumable_read_string_connection_closed_during_header() {
+        let mut reader = ResumableReadString::new(256);
+        // Only 3 bytes when 8 are needed for the length header
+        let mut cursor = Cursor::new(vec![0u8, 0, 0]);
+        let result = reader.read_on(&mut cursor).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Connection closed"));
+    }
+
+    #[tokio::test]
+    async fn resumable_read_string_connection_closed_during_payload() {
+        // Encode length = 10 in big-endian u64, but only provide 5 bytes of payload
+        let mut data = vec![0u8, 0, 0, 0, 0, 0, 0, 10];
+        data.extend_from_slice(b"short");
+
+        let mut reader = ResumableReadString::new(256);
+        let mut cursor = Cursor::new(data);
+        let result = reader.read_on(&mut cursor).await;
+        assert!(result.is_err());
+        assert!(result
+            .unwrap_err()
+            .to_string()
+            .contains("Connection closed"));
+    }
+
+    // ── Cancel-safety: read_on/write_to survive tokio::select! ──────
+
+    #[tokio::test]
+    async fn resumable_read_string_cancel_during_header() {
+        // Wire format for "hello": [0,0,0,0,0,0,0,5] + b"hello" = 13 bytes
+        let wire = {
+            let mut buf = Vec::new();
+            write_string(&mut buf, "hello").await.unwrap();
+            buf
+        };
+
+        let (mut tx, mut rx) = tokio::io::duplex(64);
+        let mut reader = ResumableReadString::new(256);
+
+        // Feed only 3 bytes of the 8-byte header — read_on will block
+        tx.write_all(&wire[..3]).await.unwrap();
+
+        tokio::select! {
+            _ = reader.read_on(&mut rx) => panic!("should not complete with partial header"),
+            _ = tokio::time::sleep(std::time::Duration::from_millis(50)) => {}
+        }
+
+        // reader consumed 3 bytes, offset is at 3. Feed the rest.
+        tx.write_all(&wire[3..]).await.unwrap();
+
+        // Resume — must complete correctly from where it left off
+        let result = reader.read_on(&mut rx).await.unwrap();
+        assert_eq!(result, "hello");
+    }
+
+    #[tokio::test]
+    async fn resumable_read_string_cancel_during_payload() {
+        // Wire format for "hello world!": 8-byte header + 12 bytes payload = 20 bytes
+        let wire = {
+            let mut buf = Vec::new();
+            write_string(&mut buf, "hello world!").await.unwrap();
+            buf
+        };
+
+        let (mut tx, mut rx) = tokio::io::duplex(64);
+        let mut reader = ResumableReadString::new(256);
+
+        // Feed entire header + 4 bytes of payload (12 of 20 bytes)
+        tx.write_all(&wire[..12]).await.unwrap();
+
+        tokio::select! {
+            _ = reader.read_on(&mut rx) => panic!("should not complete with partial payload"),
+            _ = tokio::time::sleep(std::time::Duration::from_millis(50)) => {}
+        }
+
+        // Feed the remaining 8 bytes of payload
+        tx.write_all(&wire[12..]).await.unwrap();
+
+        let result = reader.read_on(&mut rx).await.unwrap();
+        assert_eq!(result, "hello world!");
+    }
+
+    #[tokio::test]
+    async fn resumable_write_string_cancel_and_resume() {
+        // "hello world!" = 12 bytes payload, 20 bytes wire total
+        let mut writer = ResumableWriteString::new("hello world!");
+
+        // duplex(4): writer can push at most 4 bytes before blocking
+        let (mut rx, mut tx) = tokio::io::duplex(4);
+
+        // Cancel write_to after it has written some bytes and is blocked
+        tokio::select! {
+            _ = writer.write_to(&mut tx) => panic!("should not complete with 4-byte buffer and no reader"),
+            _ = tokio::time::sleep(std::time::Duration::from_millis(50)) => {}
+        }
+
+        // Spawn a reader that drains everything until EOF
+        let reader_handle = tokio::spawn(async move {
+            let mut all = Vec::new();
+            tokio::io::AsyncReadExt::read_to_end(&mut rx, &mut all)
+                .await
+                .unwrap();
+            all
+        });
+
+        // Resume — writer continues from its saved offset, reader drains concurrently
+        writer.write_to(&mut tx).await.unwrap();
+        drop(tx);
+
+        let received = reader_handle.await.unwrap();
+
+        // Verify the full wire output matches what a fresh single-shot write produces
+        let mut expected = Vec::new();
+        ResumableWriteString::new("hello world!")
+            .write_to(&mut expected)
+            .await
+            .unwrap();
+        assert_eq!(received, expected);
+    }
+
+    #[tokio::test]
+    async fn resumable_read_file_block_cancel_and_resume() {
+        let block_size = 10;
+        let file_size = 100;
+        let offset = 30;
+        let payload = vec![0xCC; 10];
+
+        // Build wire data: 8-byte offset header + 10-byte payload = 18 bytes
+        let wire = {
+            let mut buf = Vec::new();
+            let (loaned, reclaimer) = crate::sync::loan(payload.clone());
+            ResumableWriteFileBlock::new(offset, loaned)
+                .write_to(&mut buf)
+                .await
+                .unwrap();
+            drop(reclaimer);
+            buf
+        };
+
+        let (mut tx, mut rx) = tokio::io::duplex(64);
+        let mut reader = ResumableReadFileBlock::new(block_size, file_size);
+        let mut read_buf = Vec::new();
+
+        // Feed only 5 bytes of the 8-byte offset header
+        tx.write_all(&wire[..5]).await.unwrap();
+
+        tokio::select! {
+            _ = reader.read_on(&mut rx, &mut read_buf) => panic!("should not complete with partial header"),
+            _ = tokio::time::sleep(std::time::Duration::from_millis(50)) => {}
+        }
+
+        // Feed the rest
+        tx.write_all(&wire[5..]).await.unwrap();
+
+        let read_offset = reader.read_on(&mut rx, &mut read_buf).await.unwrap();
+        assert_eq!(read_offset, offset);
+        assert_eq!(read_buf, payload);
+    }
+
+    #[tokio::test]
+    async fn resumable_write_file_block_cancel_and_resume() {
+        let offset = 40;
+        let payload = vec![0xDD; 16];
+
+        let (loaned, reclaimer) = crate::sync::loan(payload);
+        let mut writer = ResumableWriteFileBlock::new(offset, loaned);
+
+        // duplex(4): forces partial writes
+        let (mut rx, mut tx) = tokio::io::duplex(4);
+
+        tokio::select! {
+            _ = writer.write_to(&mut tx) => panic!("should not complete with 4-byte buffer and no reader"),
+            _ = tokio::time::sleep(std::time::Duration::from_millis(50)) => {}
+        }
+
+        let reader_handle = tokio::spawn(async move {
+            let mut all = Vec::new();
+            tokio::io::AsyncReadExt::read_to_end(&mut rx, &mut all)
+                .await
+                .unwrap();
+            all
+        });
+
+        writer.write_to(&mut tx).await.unwrap();
+        drop(tx);
+        drop(reclaimer);
+
+        let received = reader_handle.await.unwrap();
+
+        // Verify by reading the wire data back
+        let mut reader = ResumableReadFileBlock::new(16, 100);
+        let mut read_buf = Vec::new();
+        let mut cursor = Cursor::new(received);
+        let read_offset = reader.read_on(&mut cursor, &mut read_buf).await.unwrap();
+        assert_eq!(read_offset, offset);
+        assert_eq!(read_buf, vec![0xDD; 16]);
+    }
+}
