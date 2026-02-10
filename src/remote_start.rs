@@ -1,4 +1,4 @@
-use rand::distributions::DistString;
+use rand::distr::SampleString;
 use ssh2::Session;
 use std::io::{Read, Write};
 use std::net::TcpStream;
@@ -101,7 +101,7 @@ pub fn remote_start_server(options: RemoteStartOptions) -> Result<String, anyhow
     }
 
     // execute server in one-shot ephemeral mode with a random secret
-    let secret = rand::distributions::Alphanumeric.sample_string(&mut rand::thread_rng(), 30);
+    let secret = rand::distr::Alphanumeric.sample_string(&mut rand::rng(), 30);
     {
         let mut channel = session.channel_session()?;
         let command = remote_filename.to_string()

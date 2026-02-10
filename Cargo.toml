@@ -20,7 +20,7 @@ int-enum = "1.0"
 md-5 = { version = "0.10", default-features = false }
 num = { version = "0.4", default-features = false }
 path-clean = "1.0"
-rand = "0.8"
+rand = "0.10"
 rpassword = "7.3"
 ssh2 = "0.9"
 tokio = { version= "1.0", default-features = false, features = ["fs", "io-util", "macros", "net", "sync", "rt"] }
