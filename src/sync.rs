@@ -134,6 +134,13 @@ impl<T, I: num::Num + Copy> OrderedSender<T, I> {
         }
     }
 
+    /// Close the channel from the sender side, unblocking sibling senders stuck in `send()`.
+    pub fn close(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.recv_closed = true;
+        self.cond_var.notify_all();
+    }
+
     #[cfg(test)]
     pub fn capacity(&self) -> usize {
         self.inner.capacity()

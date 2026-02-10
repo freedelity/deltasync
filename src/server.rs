@@ -95,6 +95,8 @@ pub async fn process_new_client(
     let mut receive_buffer = Vec::with_capacity(block_size);
     let mut write_buffer = Vec::with_capacity(block_size);
 
+    let mut hashing_done = false;
+
     loop {
         let pending_disk = resumable_write_block_to_disk.is_some();
         let pending_hash_write = resumable_write_hash.is_some();
@@ -138,8 +140,12 @@ pub async fn process_new_client(
             },
 
             // Next ordered block hash, send it to client
-            Some((_, block_data)) = hasher.recv(), if !pending_hash_write => {
-                resumable_write_hash = Some(ResumableWriteString::new(&block_data.hash));
+            res = hasher.recv(), if !pending_hash_write && !hashing_done => match res {
+                Ok(Some((_, block_data))) => {
+                    resumable_write_hash = Some(ResumableWriteString::new(&block_data.hash));
+                }
+                Ok(None) => { hashing_done = true; }
+                Err(e) => return Err(e),
             },
 
             else => break,

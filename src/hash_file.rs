@@ -4,6 +4,7 @@ use crate::HashAlgorithm;
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::thread;
 
 pub struct FileBlockData {
@@ -14,6 +15,7 @@ pub struct FileBlockData {
 pub struct HashStream {
     rx: OrderedReceiver<(usize, FileBlockData)>,
     join_handles: Vec<std::thread::JoinHandle<()>>,
+    error_rx: tokio::sync::watch::Receiver<Option<String>>,
 }
 
 fn hash_data(data: &[u8], algorithm: HashAlgorithm) -> String {
@@ -45,21 +47,29 @@ pub fn hash_file(
     // let start the workers threads
     let mut join_handles = Vec::with_capacity(workers as usize);
     let (tx, rx) = ordered_channel();
+    let (error_tx, error_rx) = tokio::sync::watch::channel(None);
+    let error_tx = Arc::new(error_tx);
+
     for i in 0..(workers as usize) {
         let mut tx = tx.clone();
         let path = path.clone();
+        let error_tx = Arc::clone(&error_tx);
         let handle = thread::spawn(move || {
             let mut offset = i * block_size;
             let mut block_idx = i;
             let mut file = {
                 match File::open(&path) {
                     Ok(file) => file,
-                    Err(_) => {
+                    Err(e) => {
+                        let _ = error_tx.send(Some(format!("Failed to open file: {}", e)));
+                        tx.close();
                         return;
                     }
                 }
             };
-            if file.seek(SeekFrom::Start(offset as u64)).is_err() {
+            if let Err(e) = file.seek(SeekFrom::Start(offset as u64)) {
+                let _ = error_tx.send(Some(format!("Failed to seek: {}", e)));
+                tx.close();
                 return;
             }
 
@@ -67,6 +77,10 @@ pub fn hash_file(
 
             while offset < file_size {
                 use std::io::Read;
+
+                if error_tx.borrow().is_some() {
+                    break;
+                }
 
                 let hash = {
                     let current_block_size = {
@@ -80,8 +94,14 @@ pub fn hash_file(
                     buffer.resize(current_block_size, 0);
                     let buf = &mut buffer;
 
-                    if file.read_exact(buf).is_err() {
-                        break;
+                    match file.read_exact(buf) {
+                        Ok(()) => {}
+                        Err(e) => {
+                            let _ = error_tx
+                                .send(Some(format!("Failed to read block {}: {}", block_idx, e)));
+                            tx.close();
+                            break;
+                        }
                     }
 
                     hash_data(buf, algorithm)
@@ -97,13 +117,15 @@ pub fn hash_file(
 
                 buffer = reclaimer.blocking_reclaim();
 
-                if file
-                    .seek(SeekFrom::Current(
-                        (((workers - 1) as usize) * block_size) as i64,
-                    ))
-                    .is_err()
-                {
-                    break;
+                match file.seek(SeekFrom::Current(
+                    (((workers - 1) as usize) * block_size) as i64,
+                )) {
+                    Ok(_) => {}
+                    Err(e) => {
+                        let _ = error_tx.send(Some(format!("Failed to seek to next block: {}", e)));
+                        tx.close();
+                        break;
+                    }
                 }
                 offset += (workers as usize) * block_size;
                 block_idx += workers as usize;
@@ -112,12 +134,25 @@ pub fn hash_file(
         join_handles.push(handle);
     }
 
-    Ok(HashStream { rx, join_handles })
+    Ok(HashStream {
+        rx,
+        join_handles,
+        error_rx,
+    })
 }
 
 impl HashStream {
-    pub async fn recv(&mut self) -> Option<(usize, FileBlockData)> {
-        self.rx.recv().await
+    pub async fn recv(&mut self) -> Result<Option<(usize, FileBlockData)>, anyhow::Error> {
+        if let Some(ref err) = *self.error_rx.borrow_and_update() {
+            anyhow::bail!("Hash worker failed: {}", err);
+        }
+        tokio::select! {
+            value = self.rx.recv() => Ok(value),
+            Ok(()) = self.error_rx.changed() => {
+                let msg = self.error_rx.borrow_and_update().clone().unwrap();
+                anyhow::bail!("Hash worker failed: {}", msg);
+            },
+        }
     }
 }
 
@@ -154,42 +189,42 @@ mod tests {
         };
 
         {
-            let (idx, data) = hasher.recv().await.unwrap();
+            let (idx, data) = hasher.recv().await.unwrap().unwrap();
             assert_eq!(idx, 0);
             assert_hash(data, "87569f2a32a30008939dbce402476f9e");
         }
 
         {
-            let (idx, data) = hasher.recv().await.unwrap();
+            let (idx, data) = hasher.recv().await.unwrap().unwrap();
             assert_eq!(idx, 1);
             assert_hash(data, "4bb90b25dbd367acfb66910764a60669");
         }
 
         {
-            let (idx, data) = hasher.recv().await.unwrap();
+            let (idx, data) = hasher.recv().await.unwrap().unwrap();
             assert_eq!(idx, 2);
             assert_hash(data, "2ae5379d67740e8bb6ce27404873efa5");
         }
 
         {
-            let (idx, data) = hasher.recv().await.unwrap();
+            let (idx, data) = hasher.recv().await.unwrap().unwrap();
             assert_eq!(idx, 3);
             assert_hash(data, "330880debc47896dacf1b11aa46ada4a");
         }
 
         {
-            let (idx, data) = hasher.recv().await.unwrap();
+            let (idx, data) = hasher.recv().await.unwrap().unwrap();
             assert_eq!(idx, 4);
             assert_hash(data, "a80a682a9206c851a4dd9d809a20e4c5");
         }
 
         {
-            let (idx, data) = hasher.recv().await.unwrap();
+            let (idx, data) = hasher.recv().await.unwrap().unwrap();
             assert_eq!(idx, 5);
             assert_hash(data, "590f3733f7c58433d9077904b0f1a6ee");
         }
 
-        assert!(hasher.recv().await.is_none());
+        assert!(hasher.recv().await.unwrap().is_none());
     }
 
     #[tokio::test]
@@ -199,11 +234,49 @@ mod tests {
         let mut hasher =
             hash_file("test/file_to_hash.txt", 10, 2, crate::HashAlgorithm::CRC32).unwrap();
 
-        let _ = hasher.recv().await.unwrap();
+        let _ = hasher.recv().await.unwrap().unwrap();
         std::thread::sleep(std::time::Duration::from_millis(100));
 
         // we do not read all and the senders should not cause deadlock because
         // they must not have sent any Loan to the channel (ordered_queue buffer is guaranteed to be empty)
         // So they will detect that rx is dropped on their next call to tx.send()
+    }
+
+    #[tokio::test]
+    async fn no_deadlock_on_worker_io_error() {
+        use super::*;
+        use std::io::Write;
+
+        // Create a 100-byte temp file
+        let dir = std::env::temp_dir().join("deltasync_test_deadlock");
+        let _ = std::fs::create_dir_all(&dir);
+        let file_path = dir.join("test_file.bin");
+        {
+            let mut f = std::fs::File::create(&file_path).unwrap();
+            f.write_all(&[0xABu8; 100]).unwrap();
+            f.flush().unwrap();
+        }
+
+        let mut hasher = hash_file(&file_path, 10, 2, crate::HashAlgorithm::CRC32).unwrap();
+
+        // Read block 0 — hold the return value (keeps the Loan alive, blocking worker 0 on blocking_reclaim)
+        let block0 = hasher.recv().await.unwrap().unwrap();
+
+        // Read block 1 — drop it immediately (frees worker 1, which then blocks on condvar trying to send block 3)
+        let _ = hasher.recv().await.unwrap().unwrap();
+
+        // Truncate the file to 0 bytes
+        std::fs::File::create(&file_path).unwrap();
+
+        // Drop block 0's data — worker 0 unblocks, seeks to block 2 offset, read_exact fails (EOF on empty file)
+        drop(block0);
+
+        // Worker 0 exits with error. Worker 1 should also unblock.
+        let result = tokio::time::timeout(std::time::Duration::from_secs(5), hasher.recv()).await;
+
+        assert!(result.is_ok());
+
+        // Cleanup
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

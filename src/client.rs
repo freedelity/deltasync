@@ -120,7 +120,8 @@ pub async fn new_process(options: ClientProcessOptions) -> Result<(), anyhow::Er
             },
 
             // Next ordered block hash, compare hash with local file and add block idx to "send list" if different
-            Some((_, block_data)) = hasher.recv(), if processing_hash.is_some() && !hash_comparison_over => {
+            res = hasher.recv(), if processing_hash.is_some() && !hash_comparison_over => {
+                let Some((_, block_data)) = res? else { break };
                 if block_data.hash != processing_hash.unwrap() {
                     blocks_idx_to_send.push_back((block_idx, block_data.data));
                     prepare_next_write_block(options.block_size, &mut blocks_idx_to_send, &mut resumable_write_block).await?;
