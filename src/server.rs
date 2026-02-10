@@ -6,7 +6,7 @@ use crate::{
 };
 use futures::future::OptionFuture;
 use std::fs::File;
-use std::io::{Seek, SeekFrom};
+use std::io::SeekFrom;
 use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
@@ -53,14 +53,11 @@ pub async fn process_new_client(
         }
     };
 
-    match std::fs::OpenOptions::new().append(true).open(&dest_path) {
-        Ok(mut dest) => {
-            let actual_size = dest.seek(SeekFrom::End(0))?;
-            dest.rewind()?;
-
-            if actual_size == filesize || force_truncate {
+    match std::fs::metadata(&dest_path) {
+        Ok(metadata) => {
+            if metadata.len() == filesize || force_truncate {
+                let dest = File::options().write(true).open(&dest_path)?;
                 dest.set_len(filesize)?;
-                dest
             } else {
                 return Ok(StatusCode::FileSizeDiffers);
             }
@@ -69,7 +66,6 @@ pub async fn process_new_client(
             std::io::ErrorKind::NotFound => {
                 let dest = File::create(&dest_path)?;
                 dest.set_len(filesize)?;
-                dest
             }
             std::io::ErrorKind::PermissionDenied => {
                 return Ok(StatusCode::PermissionDenied);
