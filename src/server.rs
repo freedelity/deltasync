@@ -7,7 +7,7 @@ use crate::{
 use futures::future::OptionFuture;
 use std::fs::File;
 use std::io::{Seek, SeekFrom};
-use tokio::io::{AsyncReadExt, AsyncSeekExt};
+use tokio::io::{AsyncReadExt, AsyncSeekExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 
 pub async fn process_new_client(
@@ -149,6 +149,9 @@ pub async fn process_new_client(
             else => break,
         };
     }
+
+    file.flush().await?;
+    file.sync_data().await?;
 
     Ok(StatusCode::Ack)
 }
