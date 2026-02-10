@@ -74,7 +74,7 @@ cargo build --release --feature vendored-openssl
 
 This project is licensed under the [MIT license].
 
-[MIT license]: https://github.com/freedelity/deltasync/blob/master/LICENSE
+[MIT license]: https://github.com/freedelity/deltasync/blob/main/LICENSE
 
 ### Contribution
 
