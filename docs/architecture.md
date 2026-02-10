@@ -19,7 +19,7 @@ src/
 test/
   file_to_hash.txt Test fixture for hash_file unit tests
 .github/workflows/
-  ci.yml           Build + test + lint (multi-arch, MSRV 1.70)
+  ci.yml           Build + test + lint (multi-arch, MSRV 1.85)
   release.yml      Tag-triggered release (9 architectures)
 ```
 
@@ -342,12 +342,6 @@ cargo test
 cargo fmt --check
 cargo clippy --all
 ```
-
-**MSRV (Minimum Supported Rust Version):** Rust 1.70.0
-
-**Release profile** (`Cargo.toml`): LTO (Link-Time Optimization) enabled, single codegen unit, abort on panic, symbols stripped. Produces a small, optimized binary.
-
-**CI** (`.github/workflows/ci.yml`): Tests on stable/beta/nightly/1.70.0, cross-compiles to 9 architectures, runs `rustfmt` and `clippy`.
 
 ## Dependencies
 
