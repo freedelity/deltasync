@@ -35,7 +35,7 @@ pub async fn process_new_client(
     write_status(client, StatusCode::Ack).await?;
 
     // get dest path
-    let dest_path = read_string(client).await?;
+    let dest_path = read_string(client, 4096).await?;
 
     // get block and file size
     let block_size = client.read_u64().await? as usize;

@@ -30,9 +30,13 @@ pub async fn write_string<T: AsyncWriteExt + std::marker::Unpin, S: Into<String>
 
 pub async fn read_string<T: AsyncReadExt + std::marker::Unpin>(
     read: &mut T,
+    max_len: usize,
 ) -> Result<String, anyhow::Error> {
-    let size = read.read_u64().await?;
-    let mut s = vec![0; size as usize];
+    let size = read.read_u64().await? as usize;
+    if size > max_len {
+        bail!("String length {} exceeds maximum allowed {}", size, max_len);
+    }
+    let mut s = vec![0; size];
     read.read_exact(s.as_mut_slice()).await?;
     Ok(String::from_utf8(s)?)
 }
@@ -69,14 +73,16 @@ pub async fn check_status<T: AsyncReadExt + std::marker::Unpin>(
 pub struct ResumableReadString {
     offset: usize,
     size: u64,
+    max_len: usize,
     buf: Vec<u8>,
 }
 
 impl ResumableReadString {
-    pub fn new() -> Self {
+    pub fn new(max_len: usize) -> Self {
         ResumableReadString {
             offset: 0,
             size: 0,
+            max_len,
             buf: Vec::new(),
         }
     }
@@ -97,6 +103,13 @@ impl ResumableReadString {
             for i in 0..8 {
                 self.size <<= 8;
                 self.size += self.buf[i] as u64;
+            }
+            if self.size as usize > self.max_len {
+                bail!(
+                    "String length {} exceeds maximum allowed {}",
+                    self.size,
+                    self.max_len
+                );
             }
             self.buf.clear();
             self.buf.resize(self.size as usize, 0);
