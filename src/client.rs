@@ -78,7 +78,7 @@ pub async fn new_process(options: ClientProcessOptions) -> Result<(), anyhow::Er
     // Event loop
     let mut resumable_read_string = ResumableReadString::new(256);
     let mut block_idx = 0usize;
-    let end_block_idx = (src_size as usize + options.block_size - 1) / options.block_size;
+    let end_block_idx = (src_size as usize).div_ceil(options.block_size);
     let mut blocks_idx_to_send = VecDeque::new();
     let mut resumable_write_block: Option<ResumableWriteFileBlock> = None;
     let (mut stream_rx, mut stream_tx) = tokio::io::split(stream);
