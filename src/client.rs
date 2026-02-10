@@ -50,6 +50,9 @@ pub async fn new_process(options: ClientProcessOptions) -> Result<(), anyhow::Er
     // open source file
     let mut src = File::open(&options.src_path)?;
     let src_size = src.seek(SeekFrom::End(0))?;
+    if src_size == 0 {
+        return Err(anyhow!("Source file is empty, nothing to sync"));
+    }
     src.rewind()?;
 
     // send block size, file size, force flag and hash algorithm
@@ -96,7 +99,7 @@ pub async fn new_process(options: ClientProcessOptions) -> Result<(), anyhow::Er
 
             // Display progression
             Some(_) = progress_timer.next() => {
-                println!("{} / {} ({}%)", block_idx, end_block_idx, block_idx*100/end_block_idx);
+                println!("{} / {} ({}%)", block_idx, end_block_idx, if end_block_idx == 0 { 0 } else { block_idx*100/end_block_idx });
             },
 
             // Next block has been fully written
