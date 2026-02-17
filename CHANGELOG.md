@@ -1,3 +1,13 @@
+# 1.2.0 (2026-02-17)
+
+- New flag `--port` to specify server port in `remote_start` mode.
+
+- Fix possible deadlock when hasher fails to read file.
+
+- Limit acceptable size for hash and destination path to prevent abuse.
+
+- Update to Rust 2024 edition with MSRV 1.85 and updated dependencies.
+
 # 1.1.1 (2024-10-08)
 
 - Fix last bloc not properly truncated
