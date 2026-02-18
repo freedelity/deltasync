@@ -1,3 +1,7 @@
+# Unreleased
+
+- Fix a TCP backpressure deadlock.
+
 # 1.2.0 (2026-02-17)
 
 - New flag `--port` to specify server port in `remote_start` mode.

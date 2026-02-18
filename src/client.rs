@@ -72,7 +72,8 @@ pub async fn new_process(options: ClientProcessOptions) -> Result<(), anyhow::Er
         options.workers,
         options.hash_algorithm,
     )?;
-    let mut processing_hash = None;
+    let mut remote_hashes: VecDeque<String> = VecDeque::new();
+    let mut remote_hashes_done = false;
     let mut hash_comparison_over = false;
 
     // Event loop
@@ -113,20 +114,20 @@ pub async fn new_process(options: ClientProcessOptions) -> Result<(), anyhow::Er
                 }
             },
 
-            // Hash of next block from server
-            res = resumable_read_string.read_on(&mut stream_rx), if processing_hash.is_none() => match res {
-                Ok(hash) => { processing_hash = Some(hash); },
-                Err(_) => break, // connection closed by server, stop the event loop
+            // Always keep reading hashes from server to prevent TCP backpressure deadlock
+            res = resumable_read_string.read_on(&mut stream_rx), if !remote_hashes_done => match res {
+                Ok(hash) => { remote_hashes.push_back(hash); },
+                Err(_) => { remote_hashes_done = true; },
             },
 
             // Next ordered block hash, compare hash with local file and add block idx to "send list" if different
-            res = hasher.recv(), if processing_hash.is_some() && !hash_comparison_over => {
+            res = hasher.recv(), if !remote_hashes.is_empty() && !hash_comparison_over => {
                 let Some((_, block_data)) = res? else { break };
-                if block_data.hash != processing_hash.unwrap() {
+                let remote_hash = remote_hashes.pop_front().unwrap();
+                if block_data.hash != remote_hash {
                     blocks_idx_to_send.push_back((block_idx, block_data.data));
                     prepare_next_write_block(options.block_size, &mut blocks_idx_to_send, &mut resumable_write_block).await?;
                 }
-                processing_hash = None;
                 block_idx += 1;
                 if block_idx == end_block_idx {
                     hash_comparison_over = true;
